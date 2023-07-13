@@ -1,0 +1,9 @@
+project:
+  output-dir: _docs
+
+website:
+  title: "ForestScience"
+  site-url: "https://gabrielfbueno.github.io/ForestScience"
+  description: "A biblioteca Florestal"
+  repo-branch: main
+  repo-url: "https://github.com/gabrielfbueno/ForestScience"

@@ -1,0 +1,14 @@
+﻿Parâmetros;Unidade;Resultados
+Àrea total;hectare;231.0
+Parcelas alocadas;-;67
+Parcelas cabíveis;-;11550.0
+Intensidade amostral;%;0.5800865800865801
+Volume total de madeira;m³;121251.02515702663
+Desvio Padrão;m³;0.11063651019107926
+Variância da média;(m³)²;0.012240437387260784
+Erro absoluto;m³;0.22089291961897423
+Erro relativo;%;2.1041580624123086
+IC por parcela;m³;10.50 ± 0.22
+IC por hectare;m³;524.90 ± 11.04
+IC total;m³;121251.03 ± 2551.31
+Valor de t tabelado;-;1.9965644183594744
