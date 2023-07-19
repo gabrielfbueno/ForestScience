@@ -281,9 +281,9 @@ class InventarioFlorestal:
         
         if self.__area_estratos is not None:
             
-            pd.DataFrame(self.resultados_estratos).round(2).to_csv('estatisticas_inventario.csv',
+            pd.DataFrame(self.resultados_estratos).round(2).to_csv('estatisticas_estrato.csv',
                                                              encoding='utf-8-sig', index= False, sep = ';')
-            pd.DataFrame(self.resultados).round(2).to_csv('estatisticas_estrato.csv',
+            pd.DataFrame(self.resultados).round(2).to_csv('estatisticas_inventario.csv',
                                                                encoding='utf-8-sig', index= False, sep = ';')
             
         else:
@@ -296,7 +296,7 @@ class InventarioFlorestal:
         print('Arquivos salvos com sucesso.')
 
 # %% ../nbs/00_InventarioFlorestal.ipynb 4
-from .InventarioFlorestal import *
+#from ForestScience.InventarioFlorestal import *
 import pandas as pd
 import numpy as np
 import scipy.stats
