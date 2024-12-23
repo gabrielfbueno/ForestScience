@@ -6,7 +6,19 @@
 __all__ = ['EquacoesHipsometricas']
 
 # %% ../nbs/02_EquacoesHipsometricas.ipynb 3
+import pandas as pd
+
+
 class EquacoesHipsometricas:
+
+    """Esta classe realiza o ajuste de equações hipsométricas para predições de altura em diferentes estratos florestais, utilizando modelos predefinidos e métricas de avaliação para comparar os resultados. A seguir, são descritos os principais atributos da classe:
+
+    - `predicoes`: DataFrame contendo as predições geradas pelos modelos para cada estrato e conjunto de dados.
+    - `parametros`: DataFrame contendo os parâmetros ajustados para cada modelo e estrato.
+    - `metricas_treino`: DataFrame com as métricas de avaliação dos modelos no conjunto de treino, separadas por estrato.
+    - `metricas_teste`: DataFrame com as métricas de avaliação dos modelos no conjunto de teste, separadas por estrato.
+    - `comparacao_modelos`: DataFrame contendo a comparação dos melhores modelos por métrica e estrato.
+    """
 
     def __tratativa_tabelas(dados, dap, ht, flag_treino, proporcao_treino):
 
@@ -30,23 +42,42 @@ class EquacoesHipsometricas:
 
         return df_tratado.rename(columns={dap: "dap", ht: "altura"})
 
-    def __check_normalidade(dados_tratados):
+    def __separa_dados(dados, dap, ht, estratificacao, flag_treino, proporcao_treino):
 
-        stat, p_value = shapiro(dados_tratados[dados_tratados["treino"] == 1]["altura"])
+        dicionario_dados = {}
 
-        stat = round(stat, 4)
-        p_value = round(p_value, 4)
-        if p_value < 0.05:  # Não segue uma distribuição normal
+        if estratificacao is None:
 
-            print(
-                f"A variável resposta não segue uma distribuição normal.\n Shapiro: {stat}. \n P-valor: {p_value}"
+            dicionario_dados["UNICO"] = (
+                EquacoesHipsometricas._EquacoesHipsometricas__tratativa_tabelas(
+                    dados, dap, ht, flag_treino, proporcao_treino
+                )
             )
 
         else:
 
-            print(
-                f"A variável resposta segue uma distribuição normal.\n Shapiro: {stat}. \n P-valor: {p_value}"
-            )
+            estratos = list(dados[estratificacao].unique())
+
+            for estrato_i in estratos:
+
+                dados_i = dados[dados[estratificacao] == estrato_i]
+
+                df_tratado_i = (
+                    EquacoesHipsometricas._EquacoesHipsometricas__tratativa_tabelas(
+                        dados_i, dap, ht, flag_treino, proporcao_treino
+                    )
+                )
+
+                if len(df_tratado_i[df_tratado_i["treino"] == 1]) < 20:
+
+                    warnings.warn(
+                        f"O estrato {estrato_i} tem menos de 20 registros para o treinamento.",
+                        UserWarning,
+                    )
+
+                dicionario_dados[estrato_i] = df_tratado_i
+
+        return dicionario_dados
 
     def __ajuste(x, y):
         x1 = sm.add_constant(x)
@@ -62,6 +93,39 @@ class EquacoesHipsometricas:
 
         return model.predict(sm.add_constant(x))
 
+    # funções para modelos não lineares
+    def __func_gomp(x, p1, p2, p3):
+        return p1 * np.exp(-np.exp(p2 - p3 * x))
+
+    def __func_log(x, p1, p2, p3):
+        return p1 / (1 + p2 * np.exp(-p3 * x))
+
+    def __func_champ(x, p1, p2, p3):
+        return p1 * (1 - np.exp(-p2 * x)) ** p3
+
+    __dic_modelos = {
+        "reta": {"x": ["dap"], "y": ["altura"]},
+        "parabola": {"x": ["dap", "dap2"], "y": ["altura"]},
+        "curtis": {"x": ["inverso_dap"], "y": ["log_altura"]},
+        "stofells": {"x": ["log_dap"], "y": ["log_altura"]},
+        "hericksen": {"x": ["log_dap"], "y": ["altura"]},
+        "gompertz": {
+            "function": __func_gomp,
+            "x": "dap",
+            "y": "altura",
+        },
+        "logistico": {
+            "function": __func_log,
+            "x": "dap",
+            "y": "altura",
+        },
+        "chapman_richards": {
+            "function": __func_champ,
+            "x": "dap",
+            "y": "altura",
+        },
+    }
+
     def __equacoes(dados_tratado, parametros_iniciais):
 
         # modelos lineares
@@ -72,16 +136,6 @@ class EquacoesHipsometricas:
 
         # separando dados de treino para o ajuste
         df_treino = dados_tratado[dados_tratado["treino"] == 1].copy()
-
-        # funções para modelos não lineares
-        def func_gomp(x, p1, p2, p3):
-            return p1 * np.exp(-np.exp(p2 - p3 * x))
-
-        def func_log(x, p1, p2, p3):
-            return p1 / (1 + p2 * np.exp(-p3 * x))
-
-        def func_champ(x, p1, p2, p3):
-            return p1 * (1 - np.exp(-p2 * x)) ** p3
 
         modelos_n_lineares = ["gompertz", "logistico", "chapman_richards"]
 
@@ -119,40 +173,27 @@ class EquacoesHipsometricas:
                         f"O número de parametros iniciais para o modelo {modelo_i} deve ser 3. Exemplo: (10, 1, 1)."
                     )
 
-        modelos = {
-            "reta": {"x": df_treino[["dap"]], "y": df_treino["altura"]},
-            "parabola": {"x": df_treino[["dap", "dap2"]], "y": df_treino["altura"]},
-            "curtis": {"x": df_treino[["inverso_dap"]], "y": df_treino["log_altura"]},
-            "stofells": {"x": df_treino[["log_dap"]], "y": df_treino["log_altura"]},
-            "hericksen": {"x": df_treino[["log_dap"]], "y": df_treino["altura"]},
-            "gompertz": {
-                "function": func_gomp,
-                "x": df_treino["dap"],
-                "y": df_treino["altura"],
-                "p0": parametros_iniciais["gompertz"],
-            },
-            "logistico": {
-                "function": func_log,
-                "x": df_treino["dap"],
-                "y": df_treino["altura"],
-                "p0": parametros_iniciais["logistico"],
-            },
-            "chapman_richards": {
-                "function": func_champ,
-                "x": df_treino["dap"],
-                "y": df_treino["altura"],
-                "p0": parametros_iniciais["chapman_richards"],
-            },
-        }
+        modelos = EquacoesHipsometricas._EquacoesHipsometricas__dic_modelos
 
         modelos_output = {}
+
         for name, items in modelos.items():
 
             if name in modelos_n_lineares:
 
-                popt, _ = curve_fit(
-                    items["function"], items["x"], items["y"], p0=items["p0"]
-                )
+                try:
+
+                    popt, _ = curve_fit(
+                        items["function"],
+                        df_treino[items["x"]],
+                        df_treino[items["y"]],
+                        p0=parametros_iniciais[name],
+                        maxfev=10000,
+                    )
+
+                except:
+
+                    popt = parametros_iniciais[name]
 
                 modelos_output[name] = {"model": np.nan, "params": popt}
 
@@ -162,7 +203,7 @@ class EquacoesHipsometricas:
             else:
 
                 model_i = EquacoesHipsometricas._EquacoesHipsometricas__ajuste(
-                    items["x"], items["y"]
+                    df_treino[items["x"]], df_treino[items["y"]]
                 )
                 modelos_output[name] = {
                     "model": model_i,
@@ -170,7 +211,7 @@ class EquacoesHipsometricas:
                 }
                 dados_tratado[f"altura_{name}"] = (
                     EquacoesHipsometricas._EquacoesHipsometricas__predict_model(
-                        model_i, dados_tratado[items["x"].columns], name
+                        model_i, dados_tratado[items["x"]], name
                     )
                 )
 
@@ -270,6 +311,75 @@ class EquacoesHipsometricas:
 
         return {"teste": df_metricas[0], "treino": df_metricas[1]}
 
+    def __executa_equacoes(dicionario_dados, parametros_iniciais):
+
+        equacoes_output = {}
+        metricas_equacoes = {}
+
+        for nome, df in dicionario_dados.items():
+
+            equacoes_output[nome] = (
+                EquacoesHipsometricas._EquacoesHipsometricas__equacoes(
+                    df, parametros_iniciais
+                )
+            )
+            metricas_equacoes[nome] = (
+                EquacoesHipsometricas._EquacoesHipsometricas__avaliar_modelo(
+                    equacoes_output[nome]
+                )
+            )
+
+        return {"equacoes_output": equacoes_output, "metricas": metricas_equacoes}
+
+    def __gera_tabelas(outputs):
+
+        grupos = outputs["metricas"].keys()
+
+        df_metricas = {"treino": pd.DataFrame(), "teste": pd.DataFrame()}
+        df_parametros = pd.DataFrame()
+        df_predicao = pd.DataFrame()
+        remove_list = ["dap2", "inverso_dap", "log_dap", "log_altura"]
+
+        for grupo in grupos:
+
+            # tabela predicoes
+            df_pred_i = outputs["equacoes_output"][grupo][1]
+            df_pred_i["Estrato"] = grupo
+            df_predicao = pd.concat(
+                [
+                    df_predicao,
+                    df_pred_i.drop(remove_list, axis=1),
+                ],
+                ignore_index=True,
+            )
+
+            # tabela parametros
+            df_param_i = outputs["equacoes_output"][grupo][2]
+            df_param_i["Estrato"] = grupo
+            df_parametros = pd.concat(
+                [
+                    df_parametros,
+                    df_param_i,
+                ],
+                ignore_index=True,
+            )
+
+            # tabela metricas
+            for conjunto in ["treino", "teste"]:
+
+                df_i = outputs["metricas"][grupo][conjunto]
+                df_i["Estrato"] = grupo
+                df_metricas[conjunto] = pd.concat(
+                    [df_metricas[conjunto], df_i], ignore_index=True
+                )
+
+        return {
+            "predicoes": df_predicao,
+            "parametros": df_parametros,
+            "metrica_teste": df_metricas["teste"],
+            "metrica_treino": df_metricas["treino"],
+        }
+
     def __plotar_residuos(
         observed,
         residuals,
@@ -279,20 +389,45 @@ class EquacoesHipsometricas:
         x_lim=(0, 30),
         y_lim=(-30, 30),
         save_fig=False,
+        estratos=None,
     ):
-
-        plt.rcParams["figure.figsize"] = (7, 4)
+        plt.rcParams["figure.figsize"] = (10, 6)
         fig, ax = plt.subplots()
-        ax.scatter(observed, residuals, c="black", label="Resíduos")
+
+        if estratos is not None:
+            # Identifica categorias únicas e mapeia cores usando uma paleta
+            unique_categories = pd.Categorical(estratos).categories
+            palette = sns.color_palette(
+                "tab10", len(unique_categories)
+            )  # Exemplo: "tab10"
+            color_map = {cat: palette[i] for i, cat in enumerate(unique_categories)}
+            colors = [color_map[cat] for cat in estratos]
+
+            # Plot dos pontos com cores baseadas nos estratos
+            scatter = ax.scatter(observed, residuals, c=colors, label="Resíduos")
+
+            # Criação da legenda com as categorias e cores correspondentes
+            legend_labels = [
+                plt.Line2D(
+                    [0], [0], marker="o", color=color_map[cat], linestyle="", label=cat
+                )
+                for cat in unique_categories
+            ]
+            ax.legend(handles=legend_labels, title="Estratos")
+        else:
+            ax.scatter(observed, residuals, c="black", label="Resíduos")
+
         ax.axhline(y=0.0, xmin=0.0, xmax=1, color="black", linestyle="--")
+
         plt.xlim(*x_lim)
         plt.ylim(*y_lim)
         plt.title(f"Resíduos - {model_name}")
         plt.xlabel(x_label)
         plt.ylabel(y_label)
-        plt.legend()
+
         if save_fig:
             plt.savefig(f"{model_name}_residuos.png", dpi=300, bbox_inches="tight")
+
         plt.show()
 
     def __plotar_tendencia(formula, modelo, dap, altura):
@@ -300,8 +435,14 @@ class EquacoesHipsometricas:
         x_range = range(0, 50)
         fig, ax = plt.subplots()
         ax.scatter(dap, altura, c="Green", label="Alturas observadas")
-        plt.xlim(0, 30)
-        plt.ylim(0, 30)
+
+        arrendondamento = lambda value: ((value + 4) // 5) * 5
+
+        x_lim = arrendondamento(np.max(dap) + 1)
+        y_lim = arrendondamento(np.max(altura) + 1)
+
+        plt.xlim(0, x_lim)
+        plt.ylim(0, y_lim)
         x = np.array(x_range)
         y = eval(formula)  # Avalia a fórmula passada
         plt.title(f"{modelo}")
@@ -310,6 +451,99 @@ class EquacoesHipsometricas:
         plt.plot(x, y, c="black", label="Predição do modelo")
         ax.legend(loc="lower right")
         # plt.savefig(f'{modelo}_tendencia.png')
+
+    def __plotar_metricas(df_metricas, metrica, estrato):
+
+        df_metricas = df_metricas.T.reset_index().iloc[1:-1, :].copy()
+        df_metricas.columns = ["Modelo", metrica]
+        df_metricas["Modelo"] = df_metricas["Modelo"].apply(
+            lambda x: x.title().replace("_", " ")
+        )
+        # Calculate the average value
+        avg_value = df_metricas[metrica].mean()
+
+        # Plot
+        plt.figure(figsize=(10, 6))
+        ax = sns.barplot(x="Modelo", y=metrica, data=df_metricas, palette="viridis")
+
+        for p in ax.patches:
+            height = p.get_height()
+            ax.text(
+                p.get_x() + p.get_width() / 2,  # Centro da barra
+                height + 0.02,  # Um pouco acima da barra
+                f"{height:.2f}",  # Valor formatado
+                ha="center",
+                fontsize=10,  # Alinhamento e tamanho da fonte
+            )
+
+        # Add horizontal line for the average value
+        plt.axhline(
+            avg_value, color="red", linestyle="--", label=f"Média - {avg_value:.2f}"
+        )
+
+        # Customize the plot
+        plt.title(f"Estrato-{estrato}", fontsize=16)
+        plt.xlabel("Modelo", fontsize=14)
+        ysup = round(np.max(df_metricas[metrica]) * 1.2, 1)
+        yinf = (
+            0
+            if np.min(df_metricas[metrica]) > 0
+            else round(np.min(df_metricas[metrica]) * 1.2, 1)
+        )
+        plt.ylim(yinf, ysup)
+        plt.ylabel(metrica, fontsize=14)
+        plt.xticks(rotation=45, fontsize=12)
+        plt.yticks(fontsize=12)
+        plt.legend(fontsize=12)
+        plt.tight_layout()
+
+        # Show the plot
+        plt.show()
+
+    def __verifica_estrato(estrato, lista_estratos_existentes):
+
+        if estrato not in lista_estratos_existentes:
+
+            raise SyntaxError(
+                f"Não existe o estrato informado: '{estrato}'. \nOs estratos informados são: {lista_estratos_existentes}"
+            )
+
+    def __verifica_modelo(modelo):
+
+        lista_modelos = [
+            "reta",
+            "parabola",
+            "curtis",
+            "stofells",
+            "hericksen",
+            "logistico",
+            "gompertz",
+            "chapman_richards",
+        ]
+
+        if modelo not in lista_modelos:
+
+            raise SyntaxError(
+                f"O modelo informado '{modelo}' não existe. \nOs modelos disponíveis são: {lista_modelos}'"
+            )
+
+    def __filtro_estrato(dados, lista_estrato, lista_estratos_existentes):
+
+        if lista_estrato is None:
+
+            return dados
+
+        else:
+
+            for estrato_i in lista_estrato:
+
+                if estrato_i not in lista_estratos_existentes:
+
+                    EquacoesHipsometricas._EquacoesHipsometricas__verifica_estrato(
+                        estrato_i, lista_estratos_existentes
+                    )
+
+            return dados[dados["Estrato"].isin(lista_estrato)]
 
     def __separada_dados(dados, conjunto_dados):
 
@@ -333,78 +567,259 @@ class EquacoesHipsometricas:
 
         return df
 
+    def __comparacao_modelos(df_metricas):
+
+        df_metricas = df_metricas.copy()
+
+        def calculate_mode(data):
+
+            frequency = {}
+
+            for item in data:
+                if item in frequency:
+                    frequency[item] += 1
+                else:
+                    frequency[item] = 1
+
+            max_count = max(frequency.values())
+            mode = [key for key, value in frequency.items() if value == max_count]
+
+            if len(mode) == 1:
+                return mode[0]
+            else:
+                return mode
+
+        metrica_menor_melhor = ["RMSE", "MAE", "AIC", "BIC"]
+        metrica_maior_melhor = [
+            x for x in df_metricas["Metrica"].unique() if x not in metrica_menor_melhor
+        ]
+
+        df_metricas["Melhor_modelo"] = None
+
+        df_metricas.loc[
+            df_metricas["Metrica"].isin(metrica_menor_melhor), "Melhor_modelo"
+        ] = df_metricas.loc[
+            df_metricas["Metrica"].isin(metrica_menor_melhor), df_metricas.columns[1:-2]
+        ].idxmin(
+            axis=1
+        )
+
+        df_metricas.loc[
+            df_metricas["Metrica"].isin(metrica_maior_melhor), "Melhor_modelo"
+        ] = df_metricas.loc[
+            df_metricas["Metrica"].isin(metrica_maior_melhor), df_metricas.columns[1:-2]
+        ].idxmax(
+            axis=1
+        )
+
+        df_melhores = pd.pivot(
+            df_metricas, columns="Metrica", values="Melhor_modelo", index="Estrato"
+        )
+
+        df_ = df_melhores.merge(
+            df_metricas.groupby("Estrato")
+            .agg({"Melhor_modelo": calculate_mode})
+            .reset_index(),
+            on="Estrato",
+        )
+
+        return df_
+
     def __init__(
         self,
         dados,  # tabela com as informações das árvores
         dap: str,  # nome da coluna com o diamêtro a altura do peito em cm
-        ht: str = None,  # nome da coluna com o diamêtro a altura do peito em m
+        ht: str,  # nome da coluna com o diamêtro a altura do peito em m
+        estrato: str = None,  # nome da coluna com o estrato.
         flag_treino: str = None,  # flag com a identificação dos dados de treino, esse valor deve ser 1.
         proporcao_treino: float = 0.7,  # proporção dos dados de treino caso não seja informado um flag de treino.
         parametros_iniciais: dict = None,  # parametros iniciais para os modelos não lineares.
     ):
 
-        tabela_tratada = (
-            EquacoesHipsometricas._EquacoesHipsometricas__tratativa_tabelas(
-                dados, dap, ht, flag_treino, proporcao_treino
+        dicionario_dados = EquacoesHipsometricas._EquacoesHipsometricas__separa_dados(
+            dados, dap, ht, estrato, flag_treino, proporcao_treino
+        )
+
+        self.__outputs = EquacoesHipsometricas._EquacoesHipsometricas__executa_equacoes(
+            dicionario_dados, parametros_iniciais
+        )
+
+        tabelas_outputs = EquacoesHipsometricas._EquacoesHipsometricas__gera_tabelas(
+            self.__outputs
+        )
+
+        self.predicoes = tabelas_outputs["predicoes"]
+        self.parametros = tabelas_outputs["parametros"]
+        self.metricas_teste = tabelas_outputs["metrica_teste"]
+        self.metricas_treino = tabelas_outputs["metrica_treino"]
+        self.comparacao_modelos = (
+            EquacoesHipsometricas._EquacoesHipsometricas__comparacao_modelos(
+                self.metricas_teste
             )
         )
 
-        output_modelos = EquacoesHipsometricas._EquacoesHipsometricas__equacoes(
-            tabela_tratada, parametros_iniciais
+    def predicao(
+        self,
+        dados: pd.DataFrame,  # tabela com as informações das árvores
+        dap: str,  # nome da coluna com o diamêtro a altura do peito em cm
+        dicionario_modelos: dict,  # dicionário com estrato: modelo. Exemplo {'Estrato1': 'curtis'}
+        estrato: str = None,  # nome da coluna com o estrato.
+    ) -> (
+        pd.DataFrame
+    ):  # tabela com uma coluna adicional 'altura_predita' com a predição da altura.
+
+        "Realiza a predição da altura de uma nova tabela conforme os modelos informados no parametro 'dicionario_modelos'"
+
+        dados = dados.copy()
+
+        # modelos lineares
+        dados["dap"] = dados[dap]
+        dados["dap2"] = dados[dap] ** 2
+        dados["inverso_dap"] = 1 / dados[dap]
+        dados["log_dap"] = np.log(dados[dap])
+
+        estratos_existente = list(self.predicoes["Estrato"].unique())
+
+        df_final = pd.DataFrame()
+
+        if estrato is None:
+
+            estrato = "Estrato"
+            dados[estrato] == "UNICO"
+
+        for estrato_i, modelo in dicionario_modelos.items():
+
+            EquacoesHipsometricas._EquacoesHipsometricas__verifica_modelo(modelo)
+            EquacoesHipsometricas._EquacoesHipsometricas__verifica_estrato(
+                estrato_i, estratos_existente
+            )
+
+            dados_i = dados[dados[estrato] == estrato_i].copy()
+
+            modelos_n_lineares = ["gompertz", "logistico", "chapman_richards"]
+
+            if modelo in modelos_n_lineares:
+
+                funcao_i = EquacoesHipsometricas._EquacoesHipsometricas__dic_modelos[
+                    modelo
+                ]["function"]
+
+                popt = self.__outputs["equacoes_output"][estrato_i][0][modelo]["params"]
+
+                dados_i["altura_predita"] = funcao_i(dados_i[dap], *popt)
+
+            else:
+
+                model_i = self.__outputs["equacoes_output"][estrato_i][0][modelo][
+                    "model"
+                ]
+                variaveis_preditora = (
+                    EquacoesHipsometricas._EquacoesHipsometricas__dic_modelos[modelo][
+                        "x"
+                    ]
+                )
+                dados_i["altura_predita"] = (
+                    EquacoesHipsometricas._EquacoesHipsometricas__predict_model(
+                        model_i, dados_i[variaveis_preditora], modelo
+                    )
+                )
+
+            df_final = pd.concat([df_final, dados_i], ignore_index=True)
+
+        return df_final.drop(columns=["dap", "dap2", "inverso_dap", "log_dap"])
+
+    def grafico_residuos(
+        self,
+        modelo: str,  # Nome do modelo utilizado nas predições, como "curtis" ou "logistico".
+        lista_estratos: list = None,  # Lista de estratos específicos para filtrar os dados. Se None, considera todos os estratos existentes.
+        grafico_unico: bool = False,  # Se True, plota os resíduos de todos os estratos em um único gráfico. Caso contrário, plota um gráfico para cada estrato.
+        conjunto_dados: str = None,  # Identificador do conjunto de dados a ser filtrado, como "treino" ou "teste". Se None, utiliza todos os dados disponíveis.
+    ) -> None:
+        """Gera gráficos de resíduos para avaliar o desempenho do modelo de predição de altura."""
+
+        EquacoesHipsometricas._EquacoesHipsometricas__verifica_modelo(modelo)
+
+        estratos_existente = list(self.predicoes["Estrato"].unique())
+
+        df_filtrado = EquacoesHipsometricas._EquacoesHipsometricas__filtro_estrato(
+            self.predicoes, lista_estratos, estratos_existente
+        ).copy()
+
+        # filtrar conjunto de dados
+        df_filtrado = EquacoesHipsometricas._EquacoesHipsometricas__separada_dados(
+            df_filtrado, conjunto_dados
         )
 
-        self.__output_modelos, self.__dados_tratados, self.tabela_parametros = (
-            output_modelos
+        df_filtrado["residuo"] = (
+            (df_filtrado["altura"] - df_filtrado[f"altura_{modelo}"])
+            / df_filtrado["altura"]
+            * 100
         )
 
-        remove_list = ["dap2", "inverso_dap", "log_dap", "log_altura"]
-        self.tabela_predicoes = self.__dados_tratados[
-            [x for x in self.__dados_tratados.columns if x not in remove_list]
-        ]
+        arrendondamento = lambda value: ((value + 4) // 5) * 5
 
-        EquacoesHipsometricas._EquacoesHipsometricas__check_normalidade(
-            self.__dados_tratados
-        )
+        x_lim = arrendondamento(np.max(df_filtrado["altura"]) + 1)
+        y_lim = arrendondamento(np.max(df_filtrado["residuo"].abs()) + 1)
 
-        self.tabela_metricas = EquacoesHipsometricas._EquacoesHipsometricas__avaliar_modelo(
-            output_modelos
-        )
+        if grafico_unico == True:
 
-    def grafico_residuos(self, lista_modelos=None, conjunto_dados=None):
-
-        # separando conjunto de dados
-        df = EquacoesHipsometricas._EquacoesHipsometricas__separada_dados(
-            self.__dados_tratados, conjunto_dados
-        )
-
-        # verificando quais modelos plotar
-        lista_modelos = (
-            self.__output_modelos.keys() if lista_modelos is None else lista_modelos
-        )
-
-        for modelo_i in lista_modelos:
-
-            residuo_i = (df["altura"] - df[f"altura_{modelo_i}"]) / df["altura"] * 100
-
-            arrendondamento = lambda value: ((value + 4) // 5) * 5
-
-            x_lim = arrendondamento(np.max(df["altura"]) + 1)
-            y_lim = arrendondamento(np.max(residuo_i) + 1)
             EquacoesHipsometricas._EquacoesHipsometricas__plotar_residuos(
-                df["altura"],
-                residuo_i,
-                modelo_i,
+                df_filtrado["altura"],
+                df_filtrado["residuo"],
+                f"{modelo.title().replace('_',' ')}",
                 "Altura (m)",
                 "Resíduo (%)",
                 x_lim=(0, x_lim),
                 y_lim=(-y_lim, y_lim),
+                estratos=df_filtrado["Estrato"],
             )
 
-    def grafico_tendencia(self, lista_modelos=None, conjunto_dados=None):
+        else:
 
-        # separando conjunto de dados
-        df = EquacoesHipsometricas._EquacoesHipsometricas__separada_dados(
-            self.__dados_tratados, conjunto_dados
+            lista_estratos = (
+                estratos_existente if lista_estratos is None else lista_estratos
+            )
+
+            for estrato_i in lista_estratos:
+
+                titulo = (
+                    f"{modelo.title().replace('_',' ')}-{estrato_i}"
+                    if estrato_i != "UNICO"
+                    else modelo.title().replace("_", " ")
+                )
+
+                EquacoesHipsometricas._EquacoesHipsometricas__plotar_residuos(
+                    df_filtrado[df_filtrado["Estrato"] == estrato_i]["altura"],
+                    df_filtrado[df_filtrado["Estrato"] == estrato_i]["residuo"],
+                    titulo,
+                    "Altura (m)",
+                    "Resíduo (%)",
+                    x_lim=(0, x_lim),
+                    y_lim=(-y_lim, y_lim),
+                )
+
+    def grafico_tendencia(
+        self,
+        modelo: str,  # Nome do modelo utilizado nas predições, como "curtis" ou "logistico".
+        lista_estratos: list = None,  # Lista de estratos específicos para filtrar os dados. Se None, considera todos os estratos existentes.
+        conjunto_dados: str = None,  # Identificador do conjunto de dados a ser filtrado, como "treino" ou "teste". Se None, utiliza todos os dados disponíveis.
+    ) -> None:
+
+        "Gera gráficos de tendência para avaliar o ajuste do modelo de predição de altura"
+
+        EquacoesHipsometricas._EquacoesHipsometricas__verifica_modelo(modelo)
+
+        estratos_existente = list(self.predicoes["Estrato"].unique())
+
+        # 2) filtrar estrato ou apresentar todos
+        # verificar se modelo existe
+        df_filtrado = EquacoesHipsometricas._EquacoesHipsometricas__filtro_estrato(
+            self.predicoes, lista_estratos, estratos_existente
+        ).copy()
+
+        # 3) filtrar conjunto de dados
+        df_filtrado = EquacoesHipsometricas._EquacoesHipsometricas__separada_dados(
+            df_filtrado, conjunto_dados
         )
 
         # Dicionário de modelos e fórmulas
@@ -419,19 +834,95 @@ class EquacoesHipsometricas:
             "chapman_richards": {"formula": "{0} * (1 - np.exp(-{1} * x)) ** {2}"},
         }
 
-        # verificando quais modelos plotar
-        lista_modelos = (
-            self.__output_modelos.keys() if lista_modelos is None else lista_modelos
+        estratos_plot = list(df_filtrado["Estrato"].unique())
+
+        for estrato_i in estratos_plot:
+
+            df_i = df_filtrado[df_filtrado["Estrato"] == estrato_i].copy()
+
+            self.__outputs["equacoes_output"][estrato_i][0][modelo]["params"]
+            formula = modelos[modelo]["formula"].format(
+                *self.__outputs["equacoes_output"][estrato_i][0][modelo]["params"]
+            )
+
+            titulo = (
+                f"{modelo.title().replace('_',' ')}-{estrato_i}"
+                if estrato_i != "UNICO"
+                else modelo.title().replace("_", " ")
+            )
+            EquacoesHipsometricas._EquacoesHipsometricas__plotar_tendencia(
+                formula, titulo, df_i["dap"], df_i["altura"]
+            )
+
+    def grafico_metricas(
+        self,
+        lista_estratos: list = None,  # Lista de estratos a serem analisados. Se None, utiliza todos os estratos disponíveis nos dados.
+        lista_metricas: list = None,  # Lista de métricas a serem plotadas. Se None, considera todas as métricas disponíveis.
+        conjunto_dados: str = "teste",  # Conjunto de dados a ser analisado: "treino" ou "teste".
+    ) -> None:
+        """Gera gráficos para análise de métricas de desempenho do modelo por estrato."""
+
+        estratos_existente = list(self.predicoes["Estrato"].unique())
+
+        lista_estratos = (
+            estratos_existente if lista_estratos is None else lista_estratos
         )
 
-        # Plotando e salvando os gráficos para todos os modelos
-        for modelo, info in modelos.items():
-            
-            if modelo in lista_modelos:
-                formula = info["formula"].format(*self.__output_modelos[modelo]["params"])
-                EquacoesHipsometricas._EquacoesHipsometricas__plotar_tendencia(
-                    formula, modelo, df["dap"], df["altura"]
-                )
+        if conjunto_dados not in ["teste", "treino"]:
+
+            raise SyntaxError(
+                f"O conjunto de dados deve ser 'treino' ou 'teste', parametro informado: '{conjunto_dados}'"
+            )
+
+        df = self.metricas_teste if conjunto_dados == "teste" else self.metricas_treino
+
+        metricas_disponiveis = ["RMSE", "MAE", "R²", "R² Ajustado", "AIC", "BIC"]
+
+        lista_metricas = (
+            metricas_disponiveis if lista_metricas is None else lista_metricas
+        )
+
+        for estrato_i in lista_estratos:
+
+            EquacoesHipsometricas._EquacoesHipsometricas__verifica_estrato(
+                estrato_i, estratos_existente
+            )
+
+            for metrica_i in lista_metricas:
+
+                if metrica_i not in metricas_disponiveis:
+
+                    raise SyntaxError(
+                        f"A métrica informada '{metrica_i}' não existe. \As métricas disponíveis são: {metricas_disponiveis}'"
+                    )
+
+                df_i = df[
+                    (df["Estrato"] == estrato_i) & (df["Metrica"] == metrica_i)
+                ].copy()
+
+                EquacoesHipsometricas.__plotar_metricas(df_i, metrica_i, estrato_i)
+
+    def salvar_resultados(self) -> None:
+        """Salva as tabelas principais geradas pelo modelo em arquivos CSV."""
+
+        tabelas = [
+            self.predicoes,
+            self.parametros,
+            self.metricas_treino,
+            self.metricas_teste,
+        ]
+        nomes = ["predicoes", "parametros", "metricas_treino", "metricas_teste"]
+
+        for nome, tabela in zip(nomes, tabelas):
+
+            tabela.to_csv(
+                f"{nome}.csv",
+                encoding="utf-8-sig",
+                index=False,
+                sep=";",
+            )
+
+        print("Arquivos salvos com sucesso.")
 
 # %% ../nbs/02_EquacoesHipsometricas.ipynb 4
 #from ForestScience.EquacoesHipsometricas import *
@@ -440,5 +931,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 import statsmodels.api as sm
 from scipy.optimize import curve_fit
-from scipy.stats import shapiro
+from scipy.stats import shapiro, mode
 import matplotlib.pyplot as plt
+import seaborn as sns
+import warnings

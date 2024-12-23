@@ -366,7 +366,7 @@ class InventarioFlorestal:
         parcela: str,  # nome da coluna com identificação das parcelas
         dap: str,  # nome da coluna com o diamêtro a altura do peito em cm
         area_parcela: float,  # área de cada parcela
-        ht: str = None,  # nome da coluna com o diamêtro a altura do peito em m
+        ht: str = None,  # nome da coluna a altura em m
         estrato: str = None,  # nome da coluna com identificação dos estratos
         area_total: float = None,  # área total em ha
         area_estratos: dict = None,  # dicionário com identificacao do extrato e área em ha
