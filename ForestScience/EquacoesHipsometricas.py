@@ -928,6 +928,9 @@ class EquacoesHipsometricas:
 #from ForestScience.EquacoesHipsometricas import *
 import pandas as pd
 import numpy as np
+import sklearn
+import statsmodels
+import scipy
 from sklearn.model_selection import train_test_split
 import statsmodels.api as sm
 from scipy.optimize import curve_fit
