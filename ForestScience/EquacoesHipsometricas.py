@@ -11,7 +11,7 @@ import pandas as pd
 
 class EquacoesHipsometricas:
 
-    """Esta classe realiza o ajuste de equações hipsométricas para predições de altura em diferentes estratos florestais, utilizando modelos predefinidos e métricas de avaliação para comparar os resultados. A seguir, são descritos os principais atributos da classe:
+    """Esta classe realiza o ajuste de equações hipsométricas para predições de altura em diferentes estratos florestais, utilizando modelos predefinidos e métricas de avaliação para comparar os resultados. A seguir, são descritos os atributos da classe:
 
     - `predicoes`: DataFrame contendo as predições geradas pelos modelos para cada estrato e conjunto de dados.
     - `parametros`: DataFrame contendo os parâmetros ajustados para cada modelo e estrato.
