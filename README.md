@@ -11,10 +11,7 @@ agilizar o cálculo das estatísticas em inventários florestais.
 pip install ForestScience
 ```
 
-## Como usar?
-
-No tópico “InventarioFlorestal”, você encontrará a documentação completa
-e exemplos de uso da biblioteca. Se tiver alguma dúvida ou sugestão, não
+Se tiver alguma dúvida ou sugestão, não
 hesite em entrar em contato conosco por meio do LinkedIn ou e-mail.
 
 ## Autor
